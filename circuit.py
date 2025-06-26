@@ -301,10 +301,6 @@ class Circuit:
         else:
             module.x += distance
 
-    def translate_module_until_collision(self, module: Module, direction: Direction):
-        distance = self.get_module_distance_until_collision(module, direction)
-        self.translate_module(module, direction, distance)
-
     def get_module_distance_until_boundary(self, module: Module, direction: Direction):
         assert direction.is_vertical() or direction.is_horizontal()
         assert direction.is_positive() or direction.is_negative()
@@ -362,6 +358,10 @@ class Circuit:
                 min_collision_distance = min(min_collision_distance, collision_distance)
 
         return min_collision_distance
+
+    def translate_module_until_collision(self, module: Module, direction: Direction):
+        distance = self.get_module_distance_until_collision(module, direction)
+        self.translate_module(module, direction, distance)
 
     def rotate_module_cw(self, module: Module, angle: int):
         assert module in self.modules
