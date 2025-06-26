@@ -36,13 +36,6 @@ def draw_circuit(circuit: circuit.Circuit, scale: float = 0.2, dpi: int = 300, v
         rectangle = Rectangle((module.x, module.y), module.width, module.height,
                               fill=False, edgecolor="black")
         ax.add_patch(rectangle)
-        
-        #pin = circuit.modules_pins[module]
-        
-        #text_dx = 0.1*module.width if pin.dx >= (module.width//2) else 0.90*module.width
-        #text_dy = 0.05*module.height if pin.dy >= (module.height//2) else 0.95*module.height
-        
-        #ax.text(module.x + text_dx, module.y + text_dy, f"M{i}", ha="center", va="center", fontsize=8)
     
     for netlist in circuit.netlists:
         xs = [circuit.pins_modules[pin].x + pin.dx + pin.width/2 for pin in netlist.pins]

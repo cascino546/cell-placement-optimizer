@@ -53,7 +53,7 @@ class Netlist:
         return len(self.pins)
 
     def __getitem__(self, idx: int) -> int:
-        assert 0 <= idx <= len(self.pins)
+        assert 0 <= idx < len(self.pins)
         return self.pins[idx]
 
     def __iter__(self) -> Pin:
@@ -235,20 +235,20 @@ class Circuit:
         assert module1 in self.modules
         assert module2 in self.modules
 
-        module1_start_x = module1.x
-        module1_start_y = module1.y
+        start_x1 = module1.x
+        start_y1 = module1.y
 
-        module1_end_x = module1.x + module1.width
-        module1_end_y = module1.y + module1.height
+        end_x1 = module1.x + module1.width
+        end_y1 = module1.y + module1.height
 
-        module2_start_x = module2.x
-        module2_start_y = module2.y
+        start_x2 = module2.x
+        start_y2 = module2.y
 
-        module2_end_x = module2.x + module2.width
-        module2_end_y = module2.y + module2.height
+        end_x2 = module2.x + module2.width
+        end_y2 = module2.y + module2.height
 
-        base = min(module1_end_x, module2_end_x) - max(module1_start_x, module2_start_x)
-        height = min(module1_end_y, module2_end_y) - max(module1_start_y, module2_start_y)
+        base = min(end_x1, end_x2) - max(start_x1, start_x2)
+        height = min(end_y1, end_y2) - max(start_y1, start_y2)
 
         # If they don't overlap, the area is just set to 0
         base = max(base, 0)
@@ -260,20 +260,20 @@ class Circuit:
         assert module1 in self.modules
         assert module2 in self.modules
 
-        module1_start_x = module1.x
-        module1_start_y = module1.y
+        start_x1 = module1.x
+        start_y1 = module1.y
 
-        module1_end_x = module1.x + module1.width
-        module1_end_y = module1.y + module1.height
+        end_x1 = module1.x + module1.width
+        end_y1 = module1.y + module1.height
 
-        module2_start_x = module2.x
-        module2_start_y = module2.y
+        start_x2 = module2.x
+        start_y2 = module2.y
 
-        module2_end_x = module2.x + module2.width
-        module2_end_y = module2.y + module2.height
+        end_x2 = module2.x + module2.width
+        end_y2 = module2.y + module2.height
 
-        dx = max(module1_start_x - module2_end_x, module2_start_x - module1_end_x)
-        dy = max(module1_start_y - module2_end_y, module2_start_y - module1_end_y)
+        dx = max(start_x1 - end_x2, start_x2 - end_x1)
+        dy = max(start_y1 - end_y2, start_y2 - end_y1)
 
         # Distances could be negative in case of overlaps,
         # we just set them to 0 in these scenarios
@@ -319,7 +319,7 @@ class Circuit:
         return distance
 
     def get_module_distance_until_collision(self, module1: Module, direction: Direction) -> int:
-        min_collision_distance = self.get_module_distance_until_boundary(module1, direction)
+        min_distance = self.get_module_distance_until_boundary(module1, direction)
 
         for i in range(self.num_modules):
             module2 = self.modules[i]
@@ -327,37 +327,38 @@ class Circuit:
             if module1 == module2:
                 continue
 
-            collision_distance = 0
+            distance = 0
 
             if direction.is_vertical():
-                module1_start_x = module1.x
-                module1_end_x = module1.x + module1.width
+                start_x1 = module1.x
+                end_x1 = module1.x + module1.width
 
-                module2_start_x = module2.x
-                module2_end_x = module2.x + module2.width
+                start_x2 = module2.x
+                end_x2 = module2.x + module2.width
 
-                if module1_start_x < module2_end_x and module2_start_x < module1_end_x:
+                if start_x1 < end_x2 and start_x2 < end_x1:
                     if direction.is_positive():
-                        collision_distance = module2.y - (module1.y + module1.height)
+                        distance = module2.y - (module1.y + module1.height)
                     elif direction.is_negative():
-                        collision_distance = module1.y - (module2.y + module2.height)
+                        distance = module1.y - (module2.y + module2.height)
+                        
             elif direction.is_horizontal():
-                module1_start_y = module1.y
-                module1_end_y = module1.y + module1.height
+                start_y1 = module1.y
+                end_y1 = module1.y + module1.height
 
-                module2_start_y = module2.y
-                module2_end_y = module2.y + module2.height
+                start_y2 = module2.y
+                end_y2 = module2.y + module2.height
 
-                if module1_start_y < module2_end_y and module2_start_y < module1_end_y:
+                if start_y1 < end_y2 and start_y2 < end_y1:
                     if direction.is_positive():
-                        collision_distance = module2.x - (module1.x + module1.width)
+                        distance = module2.x - (module1.x + module1.width)
                     elif direction.is_negative():
-                        collision_distance = module1.x - (module2.x + module2.width)
+                        distance = module1.x - (module2.x + module2.width)
 
-            if collision_distance > 0:
-                min_collision_distance = min(min_collision_distance, collision_distance)
+            if distance > 0:
+                min_distance = min(min_distance, distance)
 
-        return min_collision_distance
+        return min_distance
 
     def translate_module_until_collision(self, module: Module, direction: Direction):
         distance = self.get_module_distance_until_collision(module, direction)
