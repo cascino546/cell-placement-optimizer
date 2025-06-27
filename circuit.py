@@ -1,8 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
-from copy import copy
-from helpers import debug
+from copy import deepcopy
+from helpers import debug, Rectangle, get_rectangles_overlap_area
 
 class Pin:
     # We are going to consider them to be constant in size
@@ -46,14 +46,13 @@ class Module:
         return f"Module(({self.x}, {self.y}), ({self.width}, {self.height}))"
 
 class Netlist:
-    def __init__(self, *pins: Pin):
+    def __init__(self, pins: list[Pin]):
         self.pins = pins
 
     def __len__(self) -> int:
         return len(self.pins)
 
     def __getitem__(self, idx: int) -> int:
-        assert 0 <= idx < len(self.pins)
         return self.pins[idx]
 
     def __iter__(self) -> Pin:
@@ -100,8 +99,8 @@ class Circuit:
         self.width = width
         self.height = height
 
-        self.modules_pins = {}
-        self.pins_modules = {}
+        self.module_to_pins = {}
+        self.pin_to_module = {}
 
         self.netlists = []
         self.modules = []
@@ -109,8 +108,7 @@ class Circuit:
 
     @property
     def num_modules(self):
-        assert len(self.modules) == len(self.modules_pins)
-        assert len(self.modules) == len(self.pins_modules)
+        assert len(self.modules) == len(self.module_to_pins)
 
         return len(self.modules)
     
@@ -122,76 +120,62 @@ class Circuit:
         string += "MODULES\n"
         string += separator
         
-        for module, pin in self.modules_pins.items():
-            string += f"{str(module)} <--> {str(pin)}\n"
+        for module, pins in self.module_to_pins.items():
+            string += f"{str(module)} <--> "
+            string += "[ "
+            for pin in pins:
+                string += f"{str(pin)} "
+            string += "]\n"
         
-        string += "\nNETLISTS\n"
+        string += "NETLISTS\n"
         string += separator
 
         for netlist in self.netlists:
             for pin in netlist:
-                module = self.pins_modules[pin]
+                module = self.pin_to_module[pin]
                 string += f"{str(module)} <--> {str(pin)}\n"
             string += "\n"
         
         return string[:-1] # Remove the last "\n"
 
-    @debug
-    def DEBUG_sanity_check(self):
-        assert self.width > 0
-        assert self.height > 0
-
-        assert len(self.modules_pins) == self.num_modules
-        assert len(self.pins_modules) == self.num_modules
-        assert len(self.connected_modules_pairs) <= 2 * self.num_modules
-
-        assert all(len(netlist) <= len(self.pins_modules) for netlist in self.netlists)
-
-        for module, pin in self.modules_pins.items():
-            assert 0 <= module.x <= (self.width - module.width)
-            assert 0 <= module.y <= (self.height - module.height)
-
-            assert 0 <= pin.dx + pin.width <= module.width
-            assert 0 <= pin.dy + pin.height <= module.height
-
     def copy(self, other: Circuit):
         self.width = other.width
         self.height = other.height
 
-        self.modules_pins = other.modules_pins
-        self.pins_modules = other.pins_modules
+        self.module_to_pins = other.module_to_pins
+        self.pin_to_module = other.pin_to_module
 
         self.modules = other.modules
         self.netlists = other.netlists
         self.connected_modules_pairs = other.connected_modules_pairs
 
-    def get_bounding_boxes_total(self) -> int:
-        return sum(self._get_netlist_bounding_box(netlist) for netlist in self.netlists)
+    def get_pins_overlap_area(self, pin1: Pin, pin2: Pin) -> int:
+        assert pin1 in self.pin_to_module
+        assert pin2 in self.pin_to_module
 
-    def get_avg_module_area(self) -> float:
-        return sum(module.area for module in self.modules) / self.num_modules
+        rect1 = Rectangle(pin1.dx, pin1.dy, pin1.width, pin1.height)
+        rect2 = Rectangle(pin2.dx, pin2.dy, pin2.width, pin2.height)
+        
+        return get_rectangles_overlap_area(rect1, rect2)
 
-    def is_feasible(self) -> bool:
-        for i in range(self.num_modules-1):
-            module1 = self.modules[i]
-            for j in range(i+1, self.num_modules):
-                module2 = self.modules[j]
-
-                if self.get_modules_overlap_area(module1, module2) > 0:
-                    return False
-
-        return True
-
-    # For simplicity, every module contains exactly one pin
-    def connect_module(self, module: Module, pin: Pin):
+    def connect_module(self, module: Module, pins: list[Pin]):
         assert 0 <= module.x + module.width <= self.width
         assert 0 <= module.y + module.height <= self.height
 
-        assert 0 <= pin.dx + pin.width <= module.width
-        assert 0 <= pin.dy + pin.height <= module.height
+        self.module_to_pins[module] = pins
 
-        self.modules_pins[module] = pin
-        self.pins_modules[pin] = module
+        for pin in pins:
+            assert 0 <= pin.dx + pin.width <= module.width
+            assert 0 <= pin.dy + pin.height <= module.height
+
+            self.pin_to_module[pin] = module
+
+        for i in range(len(pins)-1):
+            pin1 = pins[i]
+            for j in range(i+1, len(pins)):
+                pin2 = pins[j]
+
+                assert self.get_pins_overlap_area(pin1, pin2) == 0
 
         self.modules.append(module)
 
@@ -213,7 +197,7 @@ class Circuit:
         max_x, max_y = 0, 0
 
         for pin in netlist.pins:
-            module = self.pins_modules[pin]
+            module = self.pin_to_module[pin]
 
             pin_start_x = module.x + pin.dx
             pin_start_y = module.y + pin.dy
@@ -232,30 +216,31 @@ class Circuit:
 
         return base + height # Half-perimeter
 
+    def get_bounding_boxes_total(self) -> int:
+        return sum(self._get_netlist_bounding_box(netlist) for netlist in self.netlists)
+
+    def get_avg_module_area(self) -> float:
+        return sum(module.area for module in self.modules) / self.num_modules
+
     def get_modules_overlap_area(self, module1: Module, module2: Module) -> int:
         assert module1 in self.modules
         assert module2 in self.modules
 
-        start_x1 = module1.x
-        start_y1 = module1.y
+        rect1 = Rectangle(module1.x, module1.y, module1.width, module1.height)
+        rect2 = Rectangle(module2.x, module2.y, module2.width, module2.height)
 
-        end_x1 = module1.x + module1.width
-        end_y1 = module1.y + module1.height
+        return get_rectangles_overlap_area(rect1, rect2)
 
-        start_x2 = module2.x
-        start_y2 = module2.y
+    def is_feasible(self) -> bool:
+        for i in range(self.num_modules-1):
+            module1 = self.modules[i]
+            for j in range(i+1, self.num_modules):
+                module2 = self.modules[j]
 
-        end_x2 = module2.x + module2.width
-        end_y2 = module2.y + module2.height
+                if self.get_modules_overlap_area(module1, module2) > 0:
+                    return False
 
-        base = min(end_x1, end_x2) - max(start_x1, start_x2)
-        height = min(end_y1, end_y2) - max(start_y1, start_y2)
-
-        # If they don't overlap, the area is just set to 0
-        base = max(base, 0)
-        height = max(height, 0)
-
-        return base * height
+        return True
 
     def get_modules_distance_per_axis(self, module1: Module, module2: Module) -> DistancePerAxis:
         assert module1 in self.modules
@@ -286,14 +271,15 @@ class Circuit:
     def reflect_module(self, module: Module, axis: Axis):
         assert module in self.modules
 
-        pin = self.modules_pins[module]
+        pins = self.module_to_pins[module]
 
-        if axis == Axis.X:
-            pin.dy = module.height - (pin.dy + pin.height)
-        elif axis == Axis.Y:
-            pin.dx = module.width - (pin.dx + pin.width)
-        else:
-            raise Exception(f"Unrecognized Axis: {axis}")
+        for pin in pins:
+            if axis == Axis.X:
+                pin.dy = module.height - (pin.dy + pin.height)
+            elif axis == Axis.Y:
+                pin.dx = module.width - (pin.dx + pin.width)
+            else:
+                raise Exception(f"Unrecognized Axis: {axis}")
 
     def translate_module(self, module: Module, direction: Direction, distance: int):
         distance = distance if direction.is_positive() else -distance
@@ -324,9 +310,6 @@ class Circuit:
 
         for i in range(self.num_modules):
             module2 = self.modules[i]
-
-            if module1 == module2:
-                continue
 
             distance = 0
 
@@ -371,29 +354,56 @@ class Circuit:
         assert 0 <= angle <= 270
         assert angle % 90 == 0
 
-        pin = self.modules_pins[module]
+        pins = self.module_to_pins[module]
 
         # In case the placement area isn't bigh enough for the rotation
-        # we need to revert both module and pin to their initial state
-        module0, pin0 = copy(module), copy(pin)
+        # we need to revert module and pins to their initial state
+        module0, pins0 = deepcopy(module), deepcopy(pins)
 
         for _ in range(angle // 90):
             new_module_width = module.height
             new_module_height = module.width
 
-            new_pin_dx = pin.dy
-            new_pin_dy = module.width - (pin.dx + pin.width)
-
             if 0 <= module.x + new_module_width <= self.width and 0 <= module.y + new_module_height <= self.height:
-               module.width = new_module_width
-               module.height = new_module_height
+                for pin in pins:
+                    pin.dx, pin.dy = pin.dy, module.width - (pin.dx + pin.width)
 
-               pin.dx = new_pin_dx
-               pin.dy = new_pin_dy
+                module.width = new_module_width
+                module.height = new_module_height
+
             else:
-                # When rotations aren't doable we simply do nothing.
-                # This approach is useful because it doesn't require any
-                # additional logic over the other transformations
-                # (reflection and translation), which can always be done                
+                # When rotations aren't doable we (silently) backtrack to the original state.
+                # This approach is useful because it doesn't require any additional
+                # logic over the other transformations, which can always be performed                
                 module.copy(module0)
-                pin.copy(pin0)
+                for pin, pin0 in zip(pins, pins0):
+                    pin.copy(pin0)
+
+                break
+
+    @debug
+    def DEBUG_sanity_check(self):
+        assert self.width > 0
+        assert self.height > 0
+
+        assert len(self.module_to_pins) == self.num_modules
+
+        assert all(len(netlist) <= len(self.pin_to_module) for netlist in self.netlists)
+
+        for module, pins in self.module_to_pins.items():
+            assert 0 <= module.x <= (self.width - module.width)
+            assert 0 <= module.y <= (self.height - module.height)
+
+            for pin in pins:
+                try:
+                    assert 0 <= pin.dx + pin.width <= module.width
+                    assert 0 <= pin.dy + pin.height <= module.height
+                except:
+                    import pdb; pdb.set_trace()
+
+            for i in range(len(pins)-1):
+                pin1 = pins[i]
+                for j in range(i+1, len(pins)):
+                    pin2 = pins[j]
+
+                    assert self.get_pins_overlap_area(pin1, pin2) == 0

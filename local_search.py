@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from copy import copy
+from copy import deepcopy
 from circuit import Circuit, Module, Axis, Direction
 
 class LocalSearch:
@@ -31,7 +31,7 @@ class LocalSearch:
             for j in range(i+1, self.circuit.num_modules):
                 module2 = self.circuit.modules[j]
 
-                result[(module1, module2)] = copy(default_value)
+                result[(module1, module2)] = deepcopy(default_value)
 
         return result
 
@@ -143,9 +143,9 @@ class LocalSearch:
             best_action_module = None
 
             for module in active_modules:
-                pin = self.circuit.modules_pins[module]
-
-                module0, pin0 = copy(module), copy(pin)
+                pins = self.circuit.module_to_pins[module]
+                
+                module0, pins0 = deepcopy(module), deepcopy(pins)
 
                 for action_func in actions_funcs[module]:
                     action_func()
@@ -160,7 +160,8 @@ class LocalSearch:
 
                     # Backtrack
                     module.copy(module0)
-                    pin.copy(pin0)
+                    for pin, pin0 in zip(pins, pins0):
+                        pin.copy(pin0)
 
             if best_value < prev_best_value:
                 best_action_func()
@@ -177,32 +178,24 @@ class LocalSearch:
 
             prev_best_value = best_value
 
-    def to_optimal_placement(self, max_num_iterations: int = 1000, max_stagnation: int = 30, verbose: bool = True):
+    def to_optimal_placement(self, max_num_iterations: int = 1000, verbose: bool = True):
         assert max_num_iterations > 0
 
-        optimal_circuit = copy(self.circuit)
+        optimal_circuit = deepcopy(self.circuit)
         optimal_value = float("inf")
 
         if verbose:
             print("[ITER] VALUE    | FEASIBILITY")
             print(f"{'-' * 40}")
 
-        stagnation_count = 0
-
         for i in range(1, max_num_iterations+1):
             self.to_local_optimum_placement()
 
             value = self.objective_func()
 
-            if value < optimal_value:
+            if value <= optimal_value:
                 optimal_circuit.copy(self.circuit)
                 optimal_value = value
-
-                stagnation_count = 0
-            else:
-                stagnation_count += 1
-                if stagnation_count == max_stagnation:
-                    break
 
             if verbose:
                 feasible_str = "FEASIBLE" if self.circuit.is_feasible() else "NOT FEASIBLE"
