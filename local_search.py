@@ -178,11 +178,12 @@ class LocalSearch:
 
             prev_best_value = best_value
 
-    def to_optimal_placement(self, max_num_iterations: int = 1000, verbose: bool = True):
+    def to_optimal_placement(self, max_num_iterations: int = 100, verbose: bool = True):
         assert max_num_iterations > 0
 
         optimal_circuit = deepcopy(self.circuit)
         optimal_value = float("inf")
+        optimal_feasible = optimal_circuit.is_feasible()
 
         if verbose:
             print("[ITER] VALUE    | FEASIBILITY")
@@ -191,15 +192,23 @@ class LocalSearch:
         for i in range(1, max_num_iterations+1):
             self.to_local_optimum_placement()
 
-            value = self.objective_func()
+            is_feasible = self.circuit.is_feasible()
+            # We subtract by the feasibility so that we prioritize feasible circuits
+            # over unfeasible ones, even if they have the same value
+            value = self.objective_func() - int(is_feasible)
 
-            if value <= optimal_value:
+            if value < optimal_value:
                 optimal_circuit.copy(self.circuit)
                 optimal_value = value
+                optimal_feasible = is_feasible
+            elif value == optimal_value and (is_feasible and optimal_feasible):
+                # The algorithm is not going to improve from here
+                # (penalties are being fixed to zero)
+                break
 
             if verbose:
-                feasible_str = "FEASIBLE" if self.circuit.is_feasible() else "NOT FEASIBLE"
-                print(f"[{i:4}] {optimal_value:8} | {feasible_str}")
+                feasible_str = "FEASIBLE" if is_feasible else "NOT FEASIBLE"
+                print(f"[{i:4}] {optimal_value + int(is_feasible):8} | {feasible_str}")
 
             self.update_penalties()
 
