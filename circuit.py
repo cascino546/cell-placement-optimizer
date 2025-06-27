@@ -395,11 +395,8 @@ class Circuit:
             assert 0 <= module.y <= (self.height - module.height)
 
             for pin in pins:
-                try:
-                    assert 0 <= pin.dx + pin.width <= module.width
-                    assert 0 <= pin.dy + pin.height <= module.height
-                except:
-                    import pdb; pdb.set_trace()
+                assert 0 <= pin.dx + pin.width <= module.width
+                assert 0 <= pin.dy + pin.height <= module.height
 
             for i in range(len(pins)-1):
                 pin1 = pins[i]
