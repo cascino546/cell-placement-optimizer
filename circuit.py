@@ -182,6 +182,7 @@ class Circuit:
 
         return True
 
+    # For simplicity, every module contains exactly one pin
     def connect_module(self, module: Module, pin: Pin):
         assert 0 <= module.x + module.width <= self.width
         assert 0 <= module.y + module.height <= self.height
